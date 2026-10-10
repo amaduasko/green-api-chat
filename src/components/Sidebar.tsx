@@ -1,14 +1,17 @@
 import { useState, type FormEvent } from 'react';
 import type { Chat } from '../api/types';
-import { toChatId } from '../lib/chatId';
+import { initials } from '../lib/chatId';
 import type { ConnectionStatus } from '../hooks/useNotifications';
 
 interface Props {
   chats: Chat[];
   activeChatId: string | null;
   messengerLabel: string;
+  phonePlaceholder: string;
   status: ConnectionStatus;
   onOpenChat: (chatId: string) => void;
+  /** Resolves the typed phone / @username to a chat and opens it; rejects with a user-facing message. */
+  onCreateChat: (input: string) => Promise<void>;
   onLogout: () => void;
 }
 
@@ -25,20 +28,33 @@ function formatTime(ts: number): string {
     : d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
 }
 
-export function Sidebar({ chats, activeChatId, messengerLabel, status, onOpenChat, onLogout }: Props) {
+export function Sidebar({
+  chats,
+  activeChatId,
+  messengerLabel,
+  phonePlaceholder,
+  status,
+  onOpenChat,
+  onCreateChat,
+  onLogout,
+}: Props) {
   const [phone, setPhone] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
-  function handleCreate(e: FormEvent) {
+  async function handleCreate(e: FormEvent) {
     e.preventDefault();
+    setError(null);
+    setCreating(true);
     try {
-      onOpenChat(toChatId(phone));
+      await onCreateChat(phone);
       setPhone('');
       setShowForm(false);
-      setError(null);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -59,15 +75,21 @@ export function Sidebar({ chats, activeChatId, messengerLabel, status, onOpenCha
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="+7 900 123-45-67"
-            inputMode="tel"
+            placeholder={phonePlaceholder}
             aria-label="Номер телефона получателя"
             autoFocus
           />
-          <button className="btn btn--primary" type="submit">
-            Создать
+          <button className="btn btn--primary" type="submit" disabled={creating || !phone.trim()}>
+            {creating ? 'Ищем…' : 'Создать'}
           </button>
-          <button className="btn btn--ghost" type="button" onClick={() => setShowForm(false)}>
+          <button
+            className="btn btn--ghost"
+            type="button"
+            onClick={() => {
+              setShowForm(false);
+              setError(null);
+            }}
+          >
             Отмена
           </button>
           {error && (
@@ -83,7 +105,7 @@ export function Sidebar({ chats, activeChatId, messengerLabel, status, onOpenCha
       )}
 
       <ul className="chat-list">
-        {chats.length === 0 && <li className="chat-list__empty">Пока нет чатов. Создайте новый по номеру телефона.</li>}
+        {chats.length === 0 && <li className="chat-list__empty">Пока нет чатов. Создайте новый по номеру телефона получателя.</li>}
         {chats.map((chat) => {
           const last = chat.messages[chat.messages.length - 1];
           return (
@@ -93,7 +115,7 @@ export function Sidebar({ chats, activeChatId, messengerLabel, status, onOpenCha
                 onClick={() => onOpenChat(chat.chatId)}
               >
                 <span className="avatar" aria-hidden>
-                  {chat.title.replace(/\D/g, '').slice(-2) || '#'}
+                  {initials(chat.title)}
                 </span>
                 <span className="chat-item__body">
                   <span className="chat-item__row">

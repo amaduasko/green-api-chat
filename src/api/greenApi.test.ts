@@ -45,6 +45,16 @@ describe('GREEN-API client', () => {
     expect(fetch.mock.calls[0][1].method).toBe('DELETE');
   });
 
+  it('checks an account with CheckAccount', async () => {
+    const fetch = mockFetch(200, { exist: true, chatId: '10000000', fromCache: true });
+    const res = await createGreenApiClient(creds, fetch).checkAccount({ phoneNumber: 79991234567 });
+
+    expect(res.chatId).toBe('10000000');
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('https://api.example.com/waInstance1101000001/checkAccount/tok');
+    expect(JSON.parse(init.body)).toEqual({ phoneNumber: 79991234567 });
+  });
+
   it('maps auth failures to a readable error', async () => {
     const client = createGreenApiClient(creds, mockFetch(401, {}));
     await expect(client.getStateInstance()).rejects.toThrow(GreenApiError);

@@ -1,52 +1,62 @@
 import type { NotificationBody } from '../api/types';
-import { toChatMessage } from './notifications';
+import { parseNotification } from './notifications';
 
-const base = {
-  idMessage: 'MSG1',
-  timestamp: 1_700_000_000,
-  senderData: { chatId: '79001234567@c.us' },
+// Shapes taken from the GREEN-API docs (MAX v3 and WhatsApp examples).
+const maxIncoming: NotificationBody = {
+  typeWebhook: 'incomingMessageReceived',
+  timestamp: 1763115112,
+  idMessage: '1763115112345',
+  senderData: {
+    chatId: '10000000',
+    chatName: 'Ходабрыш Пробешёлов',
+    sender: '10000000',
+    senderName: 'Ходабрыш Пробешёлов',
+    senderPhoneNumber: 79876543210,
+  },
+  messageData: { typeMessage: 'textMessage', textMessageData: { textMessage: 'Привет от Green-API!' } },
 };
 
-describe('toChatMessage', () => {
-  it('parses an incoming text message', () => {
-    const body: NotificationBody = {
-      ...base,
-      typeWebhook: 'incomingMessageReceived',
-      messageData: { typeMessage: 'textMessage', textMessageData: { textMessage: 'Привет!' } },
-    };
-    expect(toChatMessage(body)).toEqual({
-      id: 'MSG1',
-      chatId: '79001234567@c.us',
-      text: 'Привет!',
-      direction: 'in',
-      timestamp: 1_700_000_000_000,
-      status: undefined,
+describe('parseNotification', () => {
+  it('parses an incoming MAX text message with sender name and phone', () => {
+    expect(parseNotification(maxIncoming)).toEqual({
+      message: {
+        id: '1763115112345',
+        chatId: '10000000',
+        text: 'Привет от Green-API!',
+        direction: 'in',
+        timestamp: 1763115112000,
+        status: undefined,
+      },
+      chatName: 'Ходабрыш Пробешёлов',
+      phone: '79876543210',
     });
   });
 
+  it('parses an incoming WhatsApp message without a phone field', () => {
+    const parsed = parseNotification({
+      ...maxIncoming,
+      senderData: { chatId: '79001234567@c.us', chatName: 'Иван' },
+    });
+    expect(parsed).toMatchObject({ message: { chatId: '79001234567@c.us' }, chatName: 'Иван', phone: undefined });
+  });
+
   it('parses an extended text message', () => {
-    const body: NotificationBody = {
-      ...base,
-      typeWebhook: 'incomingMessageReceived',
+    const parsed = parseNotification({
+      ...maxIncoming,
       messageData: { typeMessage: 'extendedTextMessage', extendedTextMessageData: { text: 'https://x.ru' } },
-    };
-    expect(toChatMessage(body)?.text).toBe('https://x.ru');
+    });
+    expect(parsed?.message.text).toBe('https://x.ru');
   });
 
-  it('treats messages sent from the phone as outgoing', () => {
-    const body: NotificationBody = {
-      ...base,
-      typeWebhook: 'outgoingMessageReceived',
-      messageData: { typeMessage: 'textMessage', textMessageData: { textMessage: 'с телефона' } },
-    };
-    expect(toChatMessage(body)).toMatchObject({ direction: 'out', status: 'sent' });
+  it('treats messages sent from the phone as outgoing and ignores sender details', () => {
+    const parsed = parseNotification({ ...maxIncoming, typeWebhook: 'outgoingMessageReceived' });
+    expect(parsed).toEqual({ message: expect.objectContaining({ direction: 'out', status: 'sent' }) });
   });
 
-  it('ignores non-text messages and other notification types', () => {
-    expect(
-      toChatMessage({ ...base, typeWebhook: 'incomingMessageReceived', messageData: { typeMessage: 'imageMessage' } }),
-    ).toBeNull();
-    expect(toChatMessage({ typeWebhook: 'stateInstanceChanged' })).toBeNull();
-    expect(toChatMessage({ ...base, typeWebhook: 'outgoingMessageStatus' })).toBeNull();
+  it('ignores API echoes, non-text messages and other notification types', () => {
+    expect(parseNotification({ ...maxIncoming, typeWebhook: 'outgoingAPIMessageReceived' })).toBeNull();
+    expect(parseNotification({ ...maxIncoming, messageData: { typeMessage: 'imageMessage' } })).toBeNull();
+    expect(parseNotification({ typeWebhook: 'stateInstanceChanged' })).toBeNull();
+    expect(parseNotification({ ...maxIncoming, typeWebhook: 'outgoingMessageStatus' })).toBeNull();
   });
 });

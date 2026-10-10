@@ -7,16 +7,16 @@ export interface ChatState {
 }
 
 export type ChatAction =
-  | { type: 'openChat'; chatId: string }
+  | { type: 'openChat'; chatId: string; title?: string; phone?: string }
   | { type: 'closeChat' }
-  | { type: 'addMessage'; message: ChatMessage }
+  | { type: 'addMessage'; message: ChatMessage; chatName?: string; phone?: string }
   | { type: 'messageSent'; chatId: string; tempId: string; idMessage: string }
   | { type: 'messageFailed'; chatId: string; tempId: string };
 
 export const initialChatState: ChatState = { chats: [], activeChatId: null };
 
-function newChat(chatId: string): Chat {
-  return { chatId, title: chatTitle(chatId), messages: [], unread: 0 };
+function newChat(chatId: string, title?: string, phone?: string): Chat {
+  return { chatId, title: title || (phone ? `+${phone}` : chatTitle(chatId)), phone, messages: [], unread: 0 };
 }
 
 function updateChat(chats: Chat[], chatId: string, fn: (chat: Chat) => Chat): Chat[] {
@@ -35,7 +35,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       const exists = state.chats.some((c) => c.chatId === action.chatId);
       const chats = exists
         ? updateChat(state.chats, action.chatId, (c) => ({ ...c, unread: 0 }))
-        : [newChat(action.chatId), ...state.chats];
+        : [newChat(action.chatId, action.title, action.phone), ...state.chats];
       return { chats, activeChatId: action.chatId };
     }
 
@@ -43,17 +43,31 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, activeChatId: null };
 
     case 'addMessage': {
-      const { message } = action;
-      let chats = state.chats.some((c) => c.chatId === message.chatId)
-        ? state.chats
-        : [...state.chats, newChat(message.chatId)];
+      const { message, chatName, phone } = action;
+      let chats = state.chats;
+      let activeChatId = state.activeChatId;
+
+      if (!chats.some((c) => c.chatId === message.chatId)) {
+        // A chat opened by phone may get its reply under a different id; join them by the sender's phone.
+        const byPhone = phone ? chats.find((c) => c.phone === phone) : undefined;
+        if (byPhone) {
+          chats = updateChat(chats, byPhone.chatId, (c) => ({
+            ...c,
+            chatId: message.chatId,
+            messages: c.messages.map((m) => ({ ...m, chatId: message.chatId })),
+          }));
+          if (activeChatId === byPhone.chatId) activeChatId = message.chatId;
+        } else {
+          chats = [...chats, newChat(message.chatId, chatName, phone)];
+        }
+      }
 
       const chat = chats.find((c) => c.chatId === message.chatId)!;
       // The same message can arrive twice: once from our own send, once as a notification,
       // or again after a failed deleteNotification. Keep the first copy.
       if (chat.messages.some((m) => m.id === message.id)) return state;
 
-      const isActive = state.activeChatId === message.chatId;
+      const isActive = activeChatId === message.chatId;
       chats = updateChat(chats, message.chatId, (c) => ({
         ...c,
         // Keep arrival order: server timestamps have second precision and may drift from the local clock,
@@ -61,7 +75,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages: [...c.messages, message],
         unread: message.direction === 'in' && !isActive ? c.unread + 1 : c.unread,
       }));
-      return { ...state, chats: sortChats(chats) };
+      return { chats: sortChats(chats), activeChatId };
     }
 
     case 'messageSent':

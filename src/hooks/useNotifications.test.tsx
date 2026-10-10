@@ -9,6 +9,7 @@ function fakeClient(queue: (Notification | null)[]): GreenApiClient & { deleted:
     deleted,
     getStateInstance: vi.fn(),
     sendMessage: vi.fn(),
+    checkAccount: vi.fn(),
     receiveNotification: vi.fn(async () => {
       await new Promise((r) => setTimeout(r, 1));
       return queue.length ? queue.shift()! : null;

@@ -66,6 +66,27 @@ describe('chatReducer', () => {
     expect(s.chats[0].messages.map((m) => m.id)).toEqual(['out', 'in']);
   });
 
+  it('opens a chat with the given title and phone', () => {
+    const s = chatReducer(initialChatState, { type: 'openChat', chatId: '10000000', title: '+79001234567', phone: '79001234567' });
+    expect(s.chats[0]).toMatchObject({ chatId: '10000000', title: '+79001234567', phone: '79001234567' });
+  });
+
+  it('names a new chat from an incoming message after the sender', () => {
+    const s = chatReducer(initialChatState, { type: 'addMessage', message: msg({ chatId: '42' }), chatName: 'Иван' });
+    expect(s.chats[0].title).toBe('Иван');
+  });
+
+  it('joins a reply to the chat opened by phone when the chat id differs', () => {
+    let s = chatReducer(initialChatState, { type: 'openChat', chatId: '79001234567@c.us', phone: '79001234567' });
+    s = chatReducer(s, { type: 'addMessage', message: msg({ id: 'out', chatId: '79001234567@c.us', direction: 'out' }) });
+    s = chatReducer(s, { type: 'addMessage', message: msg({ id: 'in', chatId: '10000000' }), phone: '79001234567' });
+
+    expect(s.chats).toHaveLength(1);
+    expect(s.chats[0].chatId).toBe('10000000');
+    expect(s.chats[0].messages.map((m) => m.id)).toEqual(['out', 'in']);
+    expect(s.activeChatId).toBe('10000000');
+  });
+
   it('marks a message as failed', () => {
     let s = chatReducer(initialChatState, { type: 'addMessage', message: msg({ id: 'tmp', direction: 'out', status: 'sending' }) });
     s = chatReducer(s, { type: 'messageFailed', chatId, tempId: 'tmp' });

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { Chat } from '../api/types';
+import { initials } from '../lib/chatId';
 
 interface Props {
   chat: Chat | null;
@@ -47,7 +48,7 @@ export function ChatWindow({ chat, onSend, onBack }: Props) {
           ←
         </button>
         <span className="avatar" aria-hidden>
-          {chat.title.replace(/\D/g, '').slice(-2) || '#'}
+          {initials(chat.title)}
         </span>
         <span className="chat__title">{chat.title}</span>
       </header>

@@ -7,7 +7,8 @@ import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
 import { useNotifications } from './hooks/useNotifications';
 import { chatReducer, initialChatState, type ChatState } from './lib/chatStore';
-import { toChatMessage } from './lib/notifications';
+import { parseNotification } from './lib/notifications';
+import { resolveChat } from './lib/resolveChat';
 import { local, readJson, remove, session, writeJson } from './lib/storage';
 
 const CREDS_KEY = 'green-api-chat:credentials';
@@ -58,10 +59,15 @@ function ChatApp({ creds, onLogout }: { creds: Credentials; onLogout: () => void
   const status = useNotifications(
     client,
     useCallback((body: NotificationBody) => {
-      const message = toChatMessage(body);
-      if (message) dispatch({ type: 'addMessage', message });
+      const parsed = parseNotification(body);
+      if (parsed) dispatch({ type: 'addMessage', ...parsed });
     }, []),
   );
+
+  async function handleCreateChat(input: string) {
+    const { chatId, title, phone } = await resolveChat(client, creds.messenger, input);
+    dispatch({ type: 'openChat', chatId, title, phone });
+  }
 
   async function handleSend(chatId: string, text: string) {
     const tempId = `local-${crypto.randomUUID()}`;
@@ -85,8 +91,10 @@ function ChatApp({ creds, onLogout }: { creds: Credentials; onLogout: () => void
         chats={state.chats}
         activeChatId={state.activeChatId}
         messengerLabel={MESSENGERS[creds.messenger].label}
+        phonePlaceholder={MESSENGERS[creds.messenger].placeholder}
         status={status}
         onOpenChat={(chatId) => dispatch({ type: 'openChat', chatId })}
+        onCreateChat={handleCreateChat}
         onLogout={onLogout}
       />
       <ChatWindow chat={activeChat} onSend={handleSend} onBack={() => dispatch({ type: 'closeChat' })} />

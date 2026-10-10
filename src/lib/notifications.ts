@@ -4,9 +4,17 @@ const DIRECTION_BY_WEBHOOK: Record<string, ChatMessage['direction']> = {
   incomingMessageReceived: 'in',
   // Sent from the phone or another device linked to the account.
   outgoingMessageReceived: 'out',
-  // Sent through the API (including by this app); deduplicated by idMessage in the store.
-  outgoingAPIMessageReceived: 'out',
+  // outgoingAPIMessageReceived is ignored on purpose: messages sent from this app are already shown
+  // from the SendMessage response, and the echo could arrive under a different chat id.
 };
+
+export interface ParsedMessage {
+  message: ChatMessage;
+  /** Sender's display name, for chats we haven't seen yet. */
+  chatName?: string;
+  /** Sender's phone (digits), when the messenger reports it. Lets a reply join the chat opened by phone. */
+  phone?: string;
+}
 
 function extractText(messageData: NotificationBody['messageData']): string | null {
   if (!messageData) return null;
@@ -22,18 +30,26 @@ function extractText(messageData: NotificationBody['messageData']): string | nul
 }
 
 /** Converts a notification body into a chat message, or null if it is not a text message. */
-export function toChatMessage(body: NotificationBody): ChatMessage | null {
+export function parseNotification(body: NotificationBody): ParsedMessage | null {
   const direction = DIRECTION_BY_WEBHOOK[body.typeWebhook];
-  const chatId = body.senderData?.chatId;
+  const sender = body.senderData;
   const text = extractText(body.messageData);
-  if (!direction || !chatId || !body.idMessage || text === null) return null;
+  if (!direction || !sender?.chatId || !body.idMessage || text === null) return null;
 
-  return {
+  const message: ChatMessage = {
     id: body.idMessage,
-    chatId,
+    chatId: sender.chatId,
     text,
     direction,
     timestamp: body.timestamp ? body.timestamp * 1000 : Date.now(),
     status: direction === 'out' ? 'sent' : undefined,
+  };
+
+  if (direction === 'out') return { message };
+
+  return {
+    message,
+    chatName: sender.chatName || sender.senderContactName || sender.senderName || undefined,
+    phone: sender.senderPhoneNumber ? String(sender.senderPhoneNumber) : undefined,
   };
 }

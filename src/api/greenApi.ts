@@ -1,5 +1,11 @@
-import { MESSENGERS } from './messengers';
-import type { Credentials, Notification, SendMessageResponse, StateInstanceResponse } from './types';
+import type {
+  CheckAccountRequest,
+  CheckAccountResponse,
+  Credentials,
+  Notification,
+  SendMessageResponse,
+  StateInstanceResponse,
+} from './types';
 
 export class GreenApiError extends Error {
   constructor(
@@ -14,13 +20,14 @@ export class GreenApiError extends Error {
 export interface GreenApiClient {
   getStateInstance(): Promise<StateInstanceResponse>;
   sendMessage(chatId: string, message: string): Promise<SendMessageResponse>;
+  checkAccount(params: CheckAccountRequest): Promise<CheckAccountResponse>;
   receiveNotification(receiveTimeoutSec?: number, signal?: AbortSignal): Promise<Notification | null>;
   deleteNotification(receiptId: number): Promise<boolean>;
 }
 
 export function createGreenApiClient(creds: Credentials, fetchImpl: typeof fetch = fetch): GreenApiClient {
-  const { instancePrefix } = MESSENGERS[creds.messenger];
-  const base = `${creds.apiUrl.trim().replace(/\/+$/, '')}/${instancePrefix}${creds.idInstance.trim()}`;
+  // Same URL shape for MAX, WhatsApp and Telegram (GREEN-API v3 unified format).
+  const base = `${creds.apiUrl.trim().replace(/\/+$/, '')}/waInstance${creds.idInstance.trim()}`;
   const token = encodeURIComponent(creds.apiTokenInstance.trim());
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -52,6 +59,13 @@ export function createGreenApiClient(creds: Credentials, fetchImpl: typeof fetch
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chatId, message }),
+      }),
+
+    checkAccount: (params) =>
+      request<CheckAccountResponse>(`checkAccount/${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
       }),
 
     receiveNotification: (receiveTimeoutSec = 5, signal) =>
